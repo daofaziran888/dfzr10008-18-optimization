@@ -30,6 +30,26 @@ def list_entries(
     return PageResult(items=items, total=total, page=page, size=size)
 
 
+@router.get("/overlimit")
+def current_overlimit(
+    caller: str | None = Query(default=None, description="按调用方名称过滤，默认返回全部调用方"),
+) -> dict[str, Any]:
+    """下游入口配额控制：读取各调用方当前周期的实际调用量与超限次数。
+
+    数据来自使用记录按「调用方 + 当前统计周期」的明细聚合，对照日调用上限计算。
+    """
+    items = service.current_overlimit(caller)
+    over = [item for item in items if item["是否超限"]]
+    return {"total": len(items), "overlimit_total": len(over), "items": items}
+
+
+@router.get("/export")
+def export_entries() -> dict[str, Any]:
+    """导出调用配额控制清单：返回当前过滤条件下的全量数据。"""
+    items, total = service.list_entries(page=1, size=10000)
+    return {"module": "quota", "total": total, "items": items}
+
+
 @router.get("/{entry_id}", response_model=dict)
 def get_entry(entry_id: int) -> dict:
     """读取单条配额配置明细；不存在时给出可读的错误说明。"""
@@ -56,10 +76,3 @@ def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出调用配额控制清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "quota", "total": total, "items": items}
